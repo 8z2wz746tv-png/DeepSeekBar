@@ -21,7 +21,7 @@ macOS 菜单栏应用，实时显示 DeepSeek API 账户余额和使用量统计
 ## 系统要求
 
 - macOS 15.0+
-- [CC Switch](https://github.com/cc-switch/cc-switch)（用于采集用量数据，可选但推荐）
+- [CC Switch](https://github.com/cc-switch/cc-switch)
 - DeepSeek API Key
 
 ### 从源码构建
