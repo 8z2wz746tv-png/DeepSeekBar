@@ -14,8 +14,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setupStatusItem()
         setupPopover()
         dashboardVM.onAppear()
-
-        NSApp.setActivationPolicy(.accessory)
     }
 
     // MARK: - Status bar
@@ -31,10 +29,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func updateStatusIcon(button: NSStatusBarButton) {
-        let url = Bundle.main.url(forResource: "favicon", withExtension: "svg")
-            ?? Bundle.module.url(forResource: "favicon", withExtension: "svg")
-        let icon = url.flatMap { NSImage(contentsOf: $0) }
-            ?? NSImage(systemSymbolName: "dollarsign.circle", accessibilityDescription: nil)
+        // Prefer .icns for reliable template rendering at menu bar size (multiple resolutions)
+        let icon: NSImage? = {
+            if let url = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
+               let image = NSImage(contentsOf: url) {
+                return image
+            }
+            if let url = Bundle.main.url(forResource: "favicon", withExtension: "svg")
+                ?? Bundle.module.url(forResource: "favicon", withExtension: "svg"),
+               let image = NSImage(contentsOf: url) {
+                return image
+            }
+            return NSImage(systemSymbolName: "dollarsign.circle", accessibilityDescription: nil)
+        }()
         icon?.size = NSSize(width: 18, height: 18)
         icon?.isTemplate = true
         button.image = icon
@@ -52,9 +59,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             popover.performClose(sender)
         } else {
             // 面板打开时缓存超过 15 分钟则自动刷新
-            if let last = dashboardVM.lastBalanceRefresh, Date().timeIntervalSince(last) > 900 {
+            if let last = dashboardVM.balanceStore.lastRefresh, Date().timeIntervalSince(last) > 900 {
                 dashboardVM.refreshBalance()
-            } else if dashboardVM.lastBalanceRefresh == nil {
+            } else if dashboardVM.balanceStore.lastRefresh == nil {
                 dashboardVM.refreshBalance()
             }
             popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)

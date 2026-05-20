@@ -2,38 +2,22 @@ import Foundation
 import Combine
 import OSLog
 
+/// UI 状态与协调器 —— 余额/用量逻辑已拆分到 BalanceStore / UsageStore
 @MainActor
 final class DashboardViewModel: ObservableObject {
     private let logger = Logger(subsystem: "com.deepseek.menubar", category: "DashboardVM")
 
-    // MARK: - Dependencies
-    private let api = DeepSeekAPI()
-    private let keychain = KeychainService()
-    private let ccSwitch = CCSwitchService()
-    private let persistence = PersistenceService()
-    private let notification = NotificationService()
+    let balanceStore = BalanceStore()
+    let usageStore = UsageStore()
     private let polling = PollingManager()
 
-    // MARK: - Published state
-    @Published var balanceInfos: [BalanceInfo] = []
-    @Published var records: [UsageRecord] = []
-    @Published var snapshots: [BalanceSnapshot] = []
     @Published var selectedModel: String?
     @Published var selectedMonth: Date = Date()
-    @Published var isRefreshing = false
     @Published var errorMessage: String?
     @Published var successMessage: String?
-    @Published var refreshProgress = ""
-    @Published var ccSwitchStatus = "—"
-    @Published var lastBalanceRefresh: Date?
-    @Published var lastNotifiedBalance: Double?
-    @Published var lastNotificationHour: Int?
 
-    private static let maxRecords = 10_000
-
-    // MARK: - Computed properties
     var needsSetup: Bool {
-        keychain.load() == nil && records.isEmpty
+        KeychainService().load() == nil && usageStore.records.isEmpty
     }
 
     var selectedMonthLabel: String {
@@ -43,7 +27,7 @@ final class DashboardViewModel: ObservableObject {
     }
 
     var modelSummaries: [ModelSummary] {
-        UsageAggregator.modelSummaries(records: records, month: selectedMonth)
+        UsageAggregator.modelSummaries(records: usageStore.records, month: selectedMonth)
             .filter { model in
                 let m = model.model.lowercased()
                 return m == "deepseek-v4-pro" || m == "deepseek-v4-flash"
@@ -51,7 +35,7 @@ final class DashboardViewModel: ObservableObject {
     }
 
     var trendPoints: [TrendPoint] {
-        let points = UsageAggregator.trendPoints(records: records, month: selectedMonth)
+        let points = UsageAggregator.trendPoints(records: usageStore.records, month: selectedMonth)
         if let model = selectedModel {
             return points.filter { $0.model == model }
         }
@@ -61,13 +45,13 @@ final class DashboardViewModel: ObservableObject {
     var currentMonthSpend: String {
         let amount: Double
         if let model = selectedModel {
-            amount = UsageAggregator.spendForModel(records: records, model: model, month: selectedMonth)
+            amount = UsageAggregator.spendForModel(records: usageStore.records, model: model, month: selectedMonth)
         } else {
-            let recordSpend = UsageAggregator.monthlySpend(records: records, month: selectedMonth)
+            let recordSpend = UsageAggregator.monthlySpend(records: usageStore.records, month: selectedMonth)
             if recordSpend > 0 {
                 amount = recordSpend
             } else {
-                amount = UsageAggregator.estimateSpendFromSnapshots(snapshots: snapshots, month: selectedMonth)
+                amount = UsageAggregator.estimateSpendFromSnapshots(snapshots: balanceStore.snapshots, month: selectedMonth)
             }
         }
         return String(format: "¥%.2f", amount)
@@ -76,70 +60,46 @@ final class DashboardViewModel: ObservableObject {
     var currentMonthRequestCount: String {
         let count: Int
         if let model = selectedModel {
-            count = UsageAggregator.requestCountForModel(records: records, model: model, month: selectedMonth)
+            count = UsageAggregator.requestCountForModel(records: usageStore.records, model: model, month: selectedMonth)
         } else {
-            count = UsageAggregator.monthlyRequestCount(records: records, month: selectedMonth)
+            count = UsageAggregator.monthlyRequestCount(records: usageStore.records, month: selectedMonth)
         }
         return "\(count)"
     }
 
     var currentMonthTokens: String {
         let tokens = selectedModel.map {
-            UsageAggregator.tokensForModel(records: records, model: $0, month: selectedMonth)
-        } ?? UsageAggregator.monthlyTokens(records: records, month: selectedMonth)
+            UsageAggregator.tokensForModel(records: usageStore.records, model: $0, month: selectedMonth)
+        } ?? UsageAggregator.monthlyTokens(records: usageStore.records, month: selectedMonth)
         return FormatUtils.tokens(tokens)
     }
 
-    // MARK: - Inputs
     func onAppear() {
-        loadPersistedState()
-        ccSwitchStatus = ccSwitch.isAvailable() ? "已连接" : "未开启"
+        usageStore.loadPersisted()
+        balanceStore.balanceInfos = usageStore.loadBalanceFromPersisted()
+        balanceStore.snapshots = usageStore.loadSnapshotsFromPersisted()
+        balanceStore.lastRefresh = usageStore.loadLastUpdatedFromPersisted()
+        balanceStore.lastNotifiedBalance = usageStore.loadLastNotifiedBalanceFromPersisted()
+        balanceStore.lastNotificationHour = usageStore.loadLastNotificationHourFromPersisted()
+        usageStore.updateCCSwitchStatus()
         startPolling()
     }
 
     func refreshBalance() {
-        isRefreshing = true
-        errorMessage = nil
-        refreshProgress = "刷新中..."
-
-        // 12 秒后显示"网络较慢"提示
-        let slowTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 12_000_000_000)
-            guard !Task.isCancelled else { return }
-            refreshProgress = "网络较慢..."
-        }
-
         Task {
-            defer { slowTask.cancel() }
             do {
-                guard let apiKey = keychain.load(), !apiKey.isEmpty else {
-                    errorMessage = "请先在设置中配置 API Key"
-                    isRefreshing = false
-                    refreshProgress = ""
-                    return
-                }
-
-                let response = try await api.fetchBalance(apiKey: apiKey)
-                balanceInfos = response.balanceInfos
-                lastBalanceRefresh = Date()
-
-                let cnyBalance = balanceInfos.first(where: { $0.currency == "CNY" })?.totalBalanceValue
-                    ?? balanceInfos.first?.totalBalanceValue
-                    ?? 0
-
-                addSnapshot(balance: cnyBalance, currency: "CNY")
-                savePersistedState()
-
-                checkLowBalanceNotification(currentBalance: cnyBalance)
-
-                isRefreshing = false
-                refreshProgress = ""
+                try await balanceStore.refresh()
+                usageStore.savePersisted(
+                    balanceInfos: balanceStore.balanceInfos,
+                    snapshots: balanceStore.snapshots,
+                    lastNotifiedBalance: balanceStore.lastNotifiedBalance,
+                    lastNotificationHour: balanceStore.lastNotificationHour
+                )
+                errorMessage = nil
                 successMessage = "余额已更新"
             } catch {
                 logger.error("余额刷新失败: \(error.localizedDescription)")
-                errorMessage = (error as? DeepSeekAPIError)?.errorDescription ?? "刷新失败"
-                isRefreshing = false
-                refreshProgress = ""
+                errorMessage = (error as? DeepSeekAPIError)?.errorDescription ?? (error as? BalanceStoreError)?.errorDescription ?? "刷新失败"
             }
         }
     }
@@ -164,35 +124,17 @@ final class DashboardViewModel: ObservableObject {
     }
 
     func syncFromCCSwitch() async {
-        guard ccSwitch.isAvailable() else { return }
-
-        do {
-            let latest = records.map(\.timestamp).max()
-            let newRecords = try await ccSwitch.readRequestLogs(since: latest)
-
-            let existingIDs = Set(records.map(\.id))
-            let dedupedRecords = newRecords.filter { !existingIDs.contains($0.id) }
-            records.append(contentsOf: dedupedRecords)
-
-            if records.count > Self.maxRecords {
-                records = Array(records.suffix(Self.maxRecords))
-            }
-
-            if !dedupedRecords.isEmpty {
-                savePersistedState()
-                successMessage = "已同步 \(dedupedRecords.count) 条记录"
-            }
-
-            if AppSettings.perRequestNotificationEnabled {
-                notification.sendUsageNotification(records: dedupedRecords)
-            }
-        } catch {
-            logger.error("CC Switch 同步失败: \(error.localizedDescription)")
-            errorMessage = "用量同步失败"
-        }
+        await usageStore.syncFromCCSwitch()
+        usageStore.savePersisted(
+            balanceInfos: balanceStore.balanceInfos,
+            snapshots: balanceStore.snapshots,
+            lastNotifiedBalance: balanceStore.lastNotifiedBalance,
+            lastNotificationHour: balanceStore.lastNotificationHour
+        )
     }
 
     // MARK: - Private
+
     private func startPolling() {
         let balanceInterval = TimeInterval(AppSettings.refreshIntervalMinutes * 60)
         polling.runBalanceRefresh(interval: balanceInterval) { @MainActor [weak self] in
@@ -206,67 +148,5 @@ final class DashboardViewModel: ObservableObject {
                 await self?.syncFromCCSwitch()
             }
         }
-    }
-
-    private func loadPersistedState() {
-        let state = persistence.load()
-        records = state.records
-        balanceInfos = state.balanceInfos
-        snapshots = state.balanceSnapshots
-        lastBalanceRefresh = state.lastUpdated
-        lastNotifiedBalance = state.lastNotifiedBalance
-        lastNotificationHour = state.lastNotificationHour
-    }
-
-    private func savePersistedState() {
-        var state = PersistedState()
-        state.records = records
-        state.balanceInfos = balanceInfos
-        state.balanceSnapshots = snapshots
-        state.lastUpdated = Date()
-        state.lastNotifiedBalance = lastNotifiedBalance
-        state.lastNotificationHour = lastNotificationHour
-        try? persistence.save(state)
-    }
-
-    private func addSnapshot(balance: Double, currency: String) {
-        let now = Date()
-        let fiveMinutesAgo = now.addingTimeInterval(-300)
-
-        if let last = snapshots.last,
-           abs(last.totalBalance - balance) < 0.001,
-           last.timestamp > fiveMinutesAgo {
-            return
-        }
-
-        snapshots.append(BalanceSnapshot(timestamp: now, totalBalance: balance, currency: currency))
-        if snapshots.count > 500 {
-            snapshots.removeFirst(snapshots.count - 500)
-        }
-    }
-
-    private func checkLowBalanceNotification(currentBalance: Double) {
-        guard AppSettings.lowBalanceNotificationEnabled,
-              currentBalance < AppSettings.lowBalanceThreshold
-        else {
-            if currentBalance >= AppSettings.lowBalanceThreshold {
-                lastNotifiedBalance = nil
-                lastNotificationHour = nil
-            }
-            return
-        }
-
-        if let last = lastNotifiedBalance, abs(currentBalance - last) < 0.001 { return }
-
-        let currentHour = Calendar.current.component(.hour, from: Date())
-        if let lastHour = lastNotificationHour, lastHour == currentHour { return }
-
-        notification.sendLowBalanceNotification(
-            balance: currentBalance,
-            threshold: AppSettings.lowBalanceThreshold
-        )
-        lastNotifiedBalance = currentBalance
-        lastNotificationHour = currentHour
-        savePersistedState()
     }
 }

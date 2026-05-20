@@ -5,18 +5,37 @@
 *.xcworkspace
 Packages/
 DerivedData/
+build-server.json
 
 # App artifacts
 *.app
 *.dmg
-*.entitlements
 *.icns
 AppIcon.iconset/
+
+# Build-time generated entitlements (not a source file)
+/DeepSeekMenuBar.entitlements
+
+# Secrets
+.env*
+*.secret
+*.pem
+*.p12
+*.cer
+
+# Logs
+*.log
 
 # macOS
 .DS_Store
 .AppleDouble
 .LSOverride
+
+# Xcode user data
+xcuserdata/
+
+# Project design notes (not for release)
+DESIGN_UPDATED.md
 
 # Claude Code local config
 .claude/

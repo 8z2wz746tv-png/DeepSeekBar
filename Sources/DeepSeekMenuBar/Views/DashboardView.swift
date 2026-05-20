@@ -9,8 +9,8 @@ struct DashboardView: View {
             TopBarView(
                 onRefresh: { viewModel.refreshBalance() },
                 onSettings: onOpenSettings,
-                isRefreshing: viewModel.isRefreshing,
-                progress: viewModel.refreshProgress
+                isRefreshing: viewModel.balanceStore.isRefreshing,
+                progress: viewModel.balanceStore.refreshProgress
             )
             .padding(.horizontal)
             .padding(.top, 12)
@@ -45,13 +45,13 @@ struct DashboardView: View {
 
                 OverviewSection(
                     balance: formattedBalance,
-                    currency: viewModel.balanceInfos.first?.currency ?? "CNY",
+                    currency: viewModel.balanceStore.balanceInfos.first?.currency ?? "CNY",
                     monthlySpend: viewModel.currentMonthSpend,
                     requests: viewModel.currentMonthRequestCount,
                     tokens: viewModel.currentMonthTokens,
                     selectedModel: viewModel.selectedModel.flatMap { PricingService.modelDisplayName($0) },
-                    lastRefresh: viewModel.lastBalanceRefresh,
-                    ccSwitchStatus: viewModel.ccSwitchStatus
+                    lastRefresh: viewModel.balanceStore.lastRefresh,
+                    ccSwitchStatus: viewModel.usageStore.ccSwitchStatus
                 )
 
                 MonthPickerView(
@@ -79,11 +79,11 @@ struct DashboardView: View {
     }
 
     private var formattedBalance: String {
-        guard !viewModel.balanceInfos.isEmpty else { return "—" }
-        if let cny = viewModel.balanceInfos.first(where: { $0.currency == "CNY" }) {
+        guard !viewModel.balanceStore.balanceInfos.isEmpty else { return "—" }
+        if let cny = viewModel.balanceStore.balanceInfos.first(where: { $0.currency == "CNY" }) {
             return String(format: "%.2f", cny.totalBalanceValue)
         }
-        let first = viewModel.balanceInfos.first
+        let first = viewModel.balanceStore.balanceInfos.first
         return String(format: "%.2f", first?.totalBalanceValue ?? 0)
     }
 }

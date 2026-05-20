@@ -1,0 +1,31 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Swift package
+        run: swift build -c release
+
+      - name: Package .app bundle
+        run: bash scripts/build-app.sh
+
+      - name: Upload .app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DeepSeekBar.app
+          path: .build/DeepSeekMenuBar.app
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DeepSeekBar.dmg
+          path: .build/DeepSeekBar.dmg

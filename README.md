@@ -1,7 +1,11 @@
 # DeepSeekBar
 
 macOS 菜单栏应用，实时显示 DeepSeek API 账户余额和使用量统计。
-
+![截图](screenshots/1.png)
+![截图](screenshots/2.png)
+![截图](screenshots/3.png)
+![截图](screenshots/4.png)
+![截图](screenshots/5.png)
 ---
 
 ## 功能
@@ -68,6 +72,45 @@ bash scripts/build-app.sh
 - AppKit (菜单栏、Popover)
 - SQLite3 (读取 CC Switch 数据库)
 - macOS Keychain
+
+## 架构
+
+详见 [架构文档](docs/architecture.md) |
+[数据流](docs/data-flow.md) |
+[打包规范](docs/bundle-structure.md)
+
+```
+Views (SwiftUI)
+    ↕
+ViewModels (DashboardViewModel / SettingsViewModel)
+    ↕
+Core Stores (BalanceStore / UsageStore)
+    ↕
+Services (DeepSeekAPI / CCSwitchService / PersistenceService / ...)
+```
+
+## 构建验证
+
+Release App Bundle 必须通过以下检查：
+
+```bash
+# 构建并打包
+bash scripts/build-app.sh
+
+# 从终端启动 Release App
+./.build/DeepSeekMenuBar.app/Contents/MacOS/DeepSeekMenuBar
+
+# 验证
+# - 控制台无 bundle path 错误
+# - 面板图标正常显示
+# - 余额刷新正常
+# - 用量数据正常显示
+```
+
+## 已知问题
+
+- 首次冷启动时，如果 CC Switch 数据库记录较多，同步可能耗时较长
+- 仅支持 DeepSeek V4 Flash / V4 Pro / V3 / R1 模型的定价估算
 
 ## License
 

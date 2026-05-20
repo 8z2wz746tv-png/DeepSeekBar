@@ -5,6 +5,7 @@ PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD_DIR="$PROJECT_DIR/.build"
 APP_DIR="$BUILD_DIR/DeepSeekMenuBar.app"
 EXECUTABLE="$BUILD_DIR/release/DeepSeekMenuBar"
+RESOURCES_SRC="$PROJECT_DIR/Sources/DeepSeekMenuBar/Resources"
 ICONSET_DIR="$BUILD_DIR/AppIcon.iconset"
 ICNS_FILE="$BUILD_DIR/AppIcon.icns"
 DMG_FILE="$BUILD_DIR/DeepSeekBar.dmg"
@@ -15,10 +16,7 @@ ENTITLEMENTS="$PROJECT_DIR/DeepSeekMenuBar.entitlements"
 # ---- Build ----
 echo "==> Building Swift package (release)..."
 cd "$PROJECT_DIR"
-swift build -c release
-
-# ---- Copy SPM resource bundle into app (for Bundle.module to work without .build) ----
-# Not needed: code prefers Bundle.main which already has favicon.svg in Resources
+swift build -c release --disable-sandbox
 
 # ---- Icon: PNG -> iconset -> ICNS ----
 echo "==> Generating app icon..."
@@ -56,10 +54,11 @@ echo "==> Creating app bundle..."
 rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS"
 mkdir -p "$APP_DIR/Contents/Resources"
+mkdir -p "$APP_DIR/Contents/Frameworks"
 
+cp "$RESOURCES_SRC/favicon.svg" "$APP_DIR/Contents/Resources/favicon.svg"
 cp "$EXECUTABLE" "$APP_DIR/Contents/MacOS/DeepSeekMenuBar"
 chmod +x "$APP_DIR/Contents/MacOS/DeepSeekMenuBar"
-cp "$PROJECT_DIR/favicon.svg" "$APP_DIR/Contents/Resources/favicon.svg"
 cp "$ICNS_FILE" "$APP_DIR/Contents/Resources/AppIcon.icns"
 
 cat > "$APP_DIR/Contents/Info.plist" << 'PLIST'
@@ -116,3 +115,10 @@ echo "  DMG:  $DMG_FILE"
 echo ""
 echo "  Run:  open $APP_DIR"
 echo "  DMG:  open $DMG_FILE"
+echo ""
+echo "==> Bundle verification =="
+echo "  MacOS:    $(ls "$APP_DIR/Contents/MacOS")"
+echo "  Resources:$(ls "$APP_DIR/Contents/Resources" | tr '\n' ' ')"
+echo "  Frameworks:$(ls "$APP_DIR/Contents/Frameworks" 2>/dev/null || echo '(empty)')"
+echo "  Info.plist: $( [ -f "$APP_DIR/Contents/Info.plist" ] && echo '✓' || echo '✗ MISSING' )"
+echo "  Code sign: $(codesign --verify "$APP_DIR" 2>&1 && echo '✓' || echo '✗ FAILED' )"
