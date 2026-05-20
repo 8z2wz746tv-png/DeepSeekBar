@@ -24,14 +24,6 @@ macOS 菜单栏应用，实时显示 DeepSeek API 账户余额和使用量统计
 - [CC Switch](https://github.com/cc-switch/cc-switch)（用于采集用量数据，可选但推荐）
 - DeepSeek API Key
 
-## 安装
-
-### 从 Release 下载
-
-从 [Releases](../../releases) 页面下载最新 DMG，拖入 Applications 文件夹。
-
-首次打开时，macOS 可能提示"无法验证开发者"——右键点击应用图标，选择「打开」即可。
-
 ### 从源码构建
 
 ```bash
@@ -110,7 +102,7 @@ bash scripts/build-app.sh
 ## 已知问题
 
 - 首次冷启动时，如果 CC Switch 数据库记录较多，同步可能耗时较长
-- 仅支持 DeepSeek V4 Flash / V4 Pro / V3 / R1 模型的定价估算
+- 仅支持 DeepSeek V4 Flash / V4 Pro 模型的定价估算
 
 ## License
 
