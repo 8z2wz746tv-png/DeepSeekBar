@@ -1,0 +1,30 @@
+# Swift / SPM
+.build/
+.swiftpm/
+*.xcodeproj
+*.xcworkspace
+Packages/
+DerivedData/
+
+# App artifacts
+*.app
+*.dmg
+*.entitlements
+*.icns
+AppIcon.iconset/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Claude Code local config
+.claude/
+
+# IDE
+.idea/
+.vscode/
+
+# Archive formats
+*.zip
+*.tar.gz
